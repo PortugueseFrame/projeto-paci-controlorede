@@ -1,4 +1,3 @@
 cd Documentos/Github/projeto-paci/
-python3 -m venv .venv
 source .venv/bin/activate
 sudo python3 main.py
