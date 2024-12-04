@@ -17,6 +17,6 @@ else:
     print(f"Unsupported OS: {os_type}. Exiting.")
     exit(1)
 
-# Start sniffing
+# Começa à procuras
 print("Starting packet capture... Press Ctrl+C to stop.")
-sniff(prn=packet_callback, count=10)  # Captura 10 pacotes e para.
+sniff(prn=packet_callback, count=100000)  # Captura 10 pacotes e para.
