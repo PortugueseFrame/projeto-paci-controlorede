@@ -19,4 +19,4 @@ else:
 
 # Começa à procuras
 print("Starting packet capture... Press Ctrl+C to stop.")
-sniff(prn=packet_callback, count=100000)  # Captura 10 pacotes e para.
+sniff(prn=packet_callback, count=100)  # Captura 100 pacotes e para.
