@@ -34,9 +34,7 @@ class WiresharkApp:
         if system == "Darwin":  # macOS
             return "en0"
         elif system == "Windows":  # Windows
-            from scapy.all import get_windows_if_list
-            interfaces = get_windows_if_list()
-            return interfaces[0]["name"] if interfaces else None
+            return "Ethernet"
         else:
             return None  # Linux or unsupported OS; user must specify manually
 
