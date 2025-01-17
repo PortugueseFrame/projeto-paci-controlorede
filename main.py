@@ -1,9 +1,10 @@
 import tkinter as tk
 from tkinter import ttk
-from scapy.all import sniff, IP, TCP, UDP, ARP, ICMP, Ether
+from scapy.all import sniff, IP, TCP, UDP, ARP, ICMP
 import threading
 import pandas as pd
 from datetime import datetime
+import platform  # For OS detection
 
 class WiresharkApp:
     def __init__(self, root):
@@ -18,11 +19,26 @@ class WiresharkApp:
         self.capture_active = False  # Flag to control the sniffing process
         self.auto_scroll_enabled = True  # To control auto-scroll behavior
 
+        # Detect default interface based on OS
+        self.default_interface = self.get_default_interface()
+
         # Define the columns for Treeview
         self.columns = ("Time", "Source IP", "Dest IP", "Protocol", "Source Port", "Dest Port", "Additional Info")
 
         # Create UI elements
         self.create_widgets()
+
+    def get_default_interface(self):
+        """Determine the default network interface based on the OS."""
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            return "en0"
+        elif system == "Windows":  # Windows
+            from scapy.all import get_windows_if_list
+            interfaces = get_windows_if_list()
+            return interfaces[0]["name"] if interfaces else None
+        else:
+            return None  # Linux or unsupported OS; user must specify manually
 
     def create_widgets(self):
         # Create a frame for the buttons
@@ -87,10 +103,8 @@ class WiresharkApp:
         self.canvas.pack(side="left", fill="both", expand=True)
         self.canvas.create_window((0, 0), window=self.tree_frame, anchor="nw")
 
-        # Create the Treeview (table) inside the tree_frame
         self.tree = ttk.Treeview(self.tree_frame, columns=self.columns, show="headings", height=15)
 
-        # Style the table
         self.tree.heading("Time", text="Time")
         self.tree.heading("Source IP", text="Source IP")
         self.tree.heading("Dest IP", text="Dest IP")
@@ -99,64 +113,55 @@ class WiresharkApp:
         self.tree.heading("Dest Port", text="Dest Port")
         self.tree.heading("Additional Info", text="Additional Info")
 
-        # Remove hardcoded widths for the columns
-        self.tree.column("Time", anchor="center", width=100, stretch=tk.YES)
-        self.tree.column("Source IP", anchor="center", stretch=tk.YES)
-        self.tree.column("Dest IP", anchor="center", stretch=tk.YES)
-        self.tree.column("Protocol", anchor="center", width=100, stretch=tk.YES)
-        self.tree.column("Source Port", anchor="center", width=100, stretch=tk.YES)
-        self.tree.column("Dest Port", anchor="center", width=100, stretch=tk.YES)
-        self.tree.column("Additional Info", anchor="center", stretch=tk.YES)
-
-        # Pack the Treeview and ensure it fills both the width and height of its container
         self.tree.pack(fill="both", expand=True)
 
-
-        # Packet counter label
         self.packet_counter_label = tk.Label(self.root, text="Packets Captured: 0", fg="white", bg="#2e2e2e", font=("Arial", 12))
         self.packet_counter_label.pack(pady=10)
 
     def start_capture(self):
-        if not self.capture_active:  # Start sniffing only if it's not already running
+        if not self.capture_active:
             self.capture_active = True
-            # Start packet sniffing in a separate thread
             self.sniff_thread = threading.Thread(target=self.sniff_packets)
             self.sniff_thread.daemon = True
             self.sniff_thread.start()
 
     def sniff_packets(self):
-        # Capture packets indefinitely and display detailed info
-        sniff(prn=self.process_packet, store=0, iface="Ethernet")  # Removed stop_filter argument
+        if self.default_interface:
+            sniff(
+                prn=self.process_packet,
+                store=0,
+                iface=self.default_interface,
+                stop_filter=self.stop_sniffing
+            )
+        else:
+            print("No default network interface detected. Please specify one.")
+
+    def stop_sniffing(self, pkt):
+        """Stop sniffing when capture_active is set to False."""
+        return not self.capture_active
+
+    def stop_capture(self):
+        """Set capture_active to False to stop the sniffing process."""
+        if self.capture_active:
+            self.capture_active = False
+            print("Stopping packet capture...")
+        else:
+            print("Packet capture is not active.")
 
     def process_packet(self, pkt):
-        if self.capture_active:
-            time = datetime.now().strftime("%H:%M:%S")
+        time = datetime.now().strftime("%H:%M:%S")
+        source_ip = pkt[IP].src if IP in pkt else "N/A"
+        dest_ip = pkt[IP].dst if IP in pkt else "N/A"
+        protocol = self.get_protocol(pkt)
+        source_port = pkt[TCP].sport if TCP in pkt else (pkt[UDP].sport if UDP in pkt else "N/A")
+        dest_port = pkt[TCP].dport if TCP in pkt else (pkt[UDP].dport if UDP in pkt else "N/A")
+        additional_info = self.get_service_info(source_port, dest_port)
 
-            # IP layer
-            source_ip = pkt[IP].src if IP in pkt else "N/A"
-            dest_ip = pkt[IP].dst if IP in pkt else "N/A"
-            protocol = self.get_protocol(pkt)
+        packet_info = (time, source_ip, dest_ip, protocol, source_port, dest_port, additional_info)
+        self.packet_data.append(packet_info)
 
-            # Ports (TCP/UDP)
-            source_port = pkt[TCP].sport if TCP in pkt else (pkt[UDP].sport if UDP in pkt else "N/A")
-            dest_port = pkt[TCP].dport if TCP in pkt else (pkt[UDP].dport if UDP in pkt else "N/A")
-
-            # Get the additional information about services based on ports
-            additional_info = self.get_service_info(source_port, dest_port)
-
-            # Add the packet data to the internal list
-            packet_info = (time, source_ip, dest_ip, protocol, source_port, dest_port, additional_info)
-            self.packet_data.append(packet_info)
-
-            # Update the Treeview with the new packet data
-            self.tree.insert("", tk.END, values=packet_info)
-
-            # Update packet counter
-            self.packet_counter_label.config(text=f"Packets Captured: {len(self.packet_data)}")
-
-            if self.auto_scroll_enabled:
-                # Automatically scroll to the bottom
-                self.canvas.yview_moveto(1)
+        self.tree.insert("", tk.END, values=packet_info)
+        self.packet_counter_label.config(text=f"Packets Captured: {len(self.packet_data)}")
 
     def get_protocol(self, pkt):
         if IP in pkt:
@@ -243,9 +248,6 @@ class WiresharkApp:
         data_to_display = self.filtered_data if self.filtered_data else self.packet_data
         for packet in data_to_display:
             self.tree.insert("", tk.END, values=packet)
-
-    def stop_capture(self):
-        self.capture_active = False
 
     def clear_packets(self):
         self.packet_data.clear()
