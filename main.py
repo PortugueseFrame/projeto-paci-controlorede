@@ -9,7 +9,7 @@ import platform  # For OS detection
 class WiresharkApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Wireshark-Like App") # App Name
+        self.root.title("WireWhale") # App Name
         self.root.geometry("950x550") # Window Size
         self.root.configure(bg="#2e2e2e")  # Dark background color
 
